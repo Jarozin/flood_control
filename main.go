@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 	"fmt"
-	"task/configs"
-	floodcontrol "task/flood-control"
+	"task/pkg/configs"
+	floodcontrol "task/pkg/flood-control"
 
 	_ "github.com/jackc/pgx/stdlib"
 )
