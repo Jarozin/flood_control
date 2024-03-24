@@ -3,10 +3,45 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
 )
 
-func main() {
+const confName = "conf.json"
 
+func main() {
+	config := ParseConfig(confName)
+	if config == nil {
+		return
+	}
+
+	return
+}
+
+func ParseConfig(filename string) *Config {
+	jsonFile, err := os.Open(filename)
+	if err != nil {
+		fmt.Printf("Couldnt open the config: %v", err)
+		return nil
+	}
+
+	defer jsonFile.Close()
+
+	jsonData, err := io.ReadAll(jsonFile)
+	if err != nil {
+		fmt.Printf("Couldnt read json file: %v", err)
+		return nil
+	}
+
+	config := Config{}
+	if err := json.Unmarshal(jsonData, &config); err != nil {
+		fmt.Printf("Couldnt unmarshal json file: %v", err)
+		return nil
+	}
+
+	return &config
 }
 
 // FloodControl интерфейс, который нужно реализовать.
@@ -15,6 +50,25 @@ type FloodControl interface {
 	// Check возвращает false если достигнут лимит максимально разрешенного
 	// кол-ва запросов согласно заданным правилам флуд контроля.
 	Check(ctx context.Context, userID int64) (bool, error)
+}
+
+type DBconfig struct {
+	User     string `json:"user"`
+	Dbname   string `json:"dbname"`
+	Password string `json:"password"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Sslmode  string `json:"sslmode"`
+}
+
+type AppConfig struct {
+	MaxSecondsPassed int `json:"maxSecondsPassed"`
+	MaxTotalRecords  int `json:"maxTotalRecords"`
+}
+
+type Config struct {
+	DBconfig  *DBconfig  `json:"DB"`
+	AppConfig *AppConfig `json:"App"`
 }
 
 type FloodController struct {

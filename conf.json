@@ -1,0 +1,14 @@
+{
+    "DB": {
+        "user": "VK",
+        "dbname": "flood_control",
+        "password": "qwerty1234",
+        "host": "127.0.0.1",
+        "port": 5432,
+        "sslmode": "disable"
+    },
+    "App": {
+        "maxSecondsPassed": 5,
+        "maxTotalRecords": 10
+    }
+}
