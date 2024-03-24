@@ -7,17 +7,53 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	_ "github.com/jackc/pgx/stdlib"
 )
 
 const confName = "conf.json"
+const maxConnectionCount = 10
 
 func main() {
 	config := ParseConfig(confName)
 	if config == nil {
 		return
 	}
+	db, err := getPostgres(config.DBconfig, maxConnectionCount)
+	if err != nil {
+		fmt.Printf("Cant connect to db: %v", err)
+		return
+	}
+
+	floodControl := NewFloodController(db,
+		config.AppConfig.MaxSecondsPassed,
+		config.AppConfig.MaxTotalRecords)
+
+	for i := 0; i < 5; i++ {
+		res, err := floodControl.Check(context.Background(), 1)
+		fmt.Println(res, err)
+	}
 
 	return
+}
+
+func getPostgres(config *DBconfig, maxConnectionCount int) (*sql.DB, error) {
+	dsn := fmt.Sprintf("user=%s dbname=%s password=%s host=%s port=%d sslmode=%s",
+		config.User, config.Dbname, config.Password,
+		config.Host, config.Port, config.Sslmode)
+	db, err := sql.Open("pgx", dsn)
+	if err != nil {
+		return nil, err
+	}
+
+	err = db.Ping()
+	if err != nil {
+		fmt.Print(config)
+		return nil, err
+	}
+
+	db.SetMaxOpenConns(maxConnectionCount)
+	return db, nil
 }
 
 func ParseConfig(filename string) *Config {
@@ -89,7 +125,7 @@ func (controller *FloodController) Check(ctx context.Context, userID int64) (boo
 	}
 
 	var total int
-	query := "select count() from flood_record where user_id = $1"
+	query := "select count(*) from flood_record where user_id = $1"
 	err = controller.DB.QueryRow(query, userID).Scan(&total)
 	if err != nil {
 		return false, err
@@ -102,7 +138,7 @@ func (controller *FloodController) Check(ctx context.Context, userID int64) (boo
 }
 
 func (controller *FloodController) deleteOld() error {
-	query := "delete * from flood_record where date < NOW() - INTERVAL $1 SECONDS"
+	query := `delete from flood_record where date < (NOW() - $1 * '1 SECOND'::interval)`
 	err := controller.DB.QueryRow(query, controller.maxSecondsPassed).Scan()
 	if err == sql.ErrNoRows {
 		err = nil
@@ -114,7 +150,7 @@ func (controller *FloodController) deleteOld() error {
 }
 
 func (controller *FloodController) addRecord(userID int64) error {
-	query := `insert into flood_record ("user_id") values ($1)`
+	query := `insert into flood_record ("user_id") values ($1::integer)`
 	err := controller.DB.QueryRow(query, userID).Scan()
 	if err == sql.ErrNoRows {
 		err = nil
