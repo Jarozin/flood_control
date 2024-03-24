@@ -12,14 +12,13 @@ import (
 )
 
 const confName = "conf.json"
-const maxConnectionCount = 10
 
 func main() {
 	config := ParseConfig(confName)
 	if config == nil {
 		return
 	}
-	db, err := getPostgres(config.DBconfig, maxConnectionCount)
+	db, err := getPostgres(config.DBconfig)
 	if err != nil {
 		fmt.Printf("Cant connect to db: %v", err)
 		return
@@ -29,15 +28,13 @@ func main() {
 		config.AppConfig.MaxSecondsPassed,
 		config.AppConfig.MaxTotalRecords)
 
-	for i := 0; i < 5; i++ {
+	for i := 1; i < 15; i++ {
 		res, err := floodControl.Check(context.Background(), 1)
 		fmt.Println(res, err)
 	}
-
-	return
 }
 
-func getPostgres(config *DBconfig, maxConnectionCount int) (*sql.DB, error) {
+func getPostgres(config *DBconfig) (*sql.DB, error) {
 	dsn := fmt.Sprintf("user=%s dbname=%s password=%s host=%s port=%d sslmode=%s",
 		config.User, config.Dbname, config.Password,
 		config.Host, config.Port, config.Sslmode)
@@ -52,7 +49,7 @@ func getPostgres(config *DBconfig, maxConnectionCount int) (*sql.DB, error) {
 		return nil, err
 	}
 
-	db.SetMaxOpenConns(maxConnectionCount)
+	db.SetMaxOpenConns(config.MaxConnectionCount)
 	return db, nil
 }
 
@@ -89,12 +86,13 @@ type FloodControl interface {
 }
 
 type DBconfig struct {
-	User     string `json:"user"`
-	Dbname   string `json:"dbname"`
-	Password string `json:"password"`
-	Host     string `json:"host"`
-	Port     int    `json:"port"`
-	Sslmode  string `json:"sslmode"`
+	User               string `json:"user"`
+	Dbname             string `json:"dbname"`
+	Password           string `json:"password"`
+	Host               string `json:"host"`
+	Port               int    `json:"port"`
+	Sslmode            string `json:"sslmode"`
+	MaxConnectionCount int    `json:"connCount"`
 }
 
 type AppConfig struct {
@@ -125,7 +123,7 @@ func (controller *FloodController) Check(ctx context.Context, userID int64) (boo
 	}
 
 	var total int
-	query := "select count(*) from flood_record where user_id = $1"
+	query := "select count(*) from flood_record where user_id = $1 and date > (NOW() - $1 * '1 SECOND'::interval)"
 	err = controller.DB.QueryRow(query, userID).Scan(&total)
 	if err != nil {
 		return false, err
